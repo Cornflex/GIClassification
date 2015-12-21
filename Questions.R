@@ -100,6 +100,19 @@ calculateError <- function(prediction, actual) {
 
 rasterJ<-brick("img\\J_04AUG14112729-M2AS-000000137917_01_P001_etrs89.TIF")
 
+############################################################################
+# Raster A and E seem to be in a strange color format.
+# How can we work with them?
+############################################################################
+rasterA <- brick("img\\A_05SEP22114039-M2AS-005509561050_01_P001_etrs89.TIF")
+summary(rasterA) # looks good
+plotRGB(rasterA, 3, 2, 1) # Nothing
+plot(rasterA) # reverse NA
+rasterAScaled <- raster.scale(rasterA)
+plot(rasterAScaled) # Nothing new
+ndviA <- normdiff(rasterA)
+plot(ndviA) # this works!
+
 
 ############################################################################
 # Why does the second layer contain NA's after data frame conversion?
@@ -119,19 +132,25 @@ summary(sector)
 sector_df <- as.data.frame(sector)
 summary(sector_df)
 
-############################################################################
-# Raster A and E seem to be in a strange color format.
-# How can we work with them?
-############################################################################
-rasterA <- brick("img\\A_05SEP22114039-M2AS-005509561050_01_P001_etrs89.TIF")
-summary(rasterA) # looks good
-plotRGB(rasterA, 3, 2, 1) # Nothing
-plot(rasterA) # reverse NA
-rasterAScaled <- raster.scale(rasterA)
-plot(rasterAScaled) # Nothing new
-ndviA <- normdiff(rasterA)
-plot(ndviA) # this works!
+# may be related to data type, 8bit arith caused
 
 ############################################################################
 # Hints on unsupervised clustering?
 ############################################################################
+
+# use more features
+# high resolution is a challenge -> maybe group pixels together
+# add mean, std for moving windows (try 3x3) (for each band -> 15 features)
+# -> helps to understand structure, which explains which class
+# be aware of size growth, e.g. scale computed values down to 8-bit
+
+# clean data inconsistencies:
+# use unsupervised alg. to cluster
+# compare labels to clusters, find the ones that don't match
+# those are likely wrong
+# => majority of same label are in same cluster; 
+# the ones that are not are probably labeled wrong
+
+# random forest is not completely deterministic, has some randomness -> works well when data is inconsistent
+# compare random forest of consistent and inconsistent training data -> maybe not so different
+# svm may be better for consistent data
