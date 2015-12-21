@@ -9,17 +9,6 @@ require(sp)
 require(rgdal)
 require(randomForest)
 
-calculateError <- function(prediction, actual) {
-	trainDiff <- prediction - actual
-	trainDiffCount <- 0
-	for(i in 1:length(prediction)) {
-		if(trainDiff[i] != 0) {
-			trainDiffCount <- trainDiffCount + 1
-		}
-	}
-	return(trainDiffCount  / length(trainDiff))
-}
-
 rasterJ<-brick("C:\\Users\\D059331\\Desktop\\DM GIC\\data\\img\\J_04AUG14112729-M2AS-000000137917_01_P001_etrs89.TIF")
 ```
 
@@ -41,6 +30,7 @@ plot(trainShapes, add=TRUE, col=colors[trainFactor])
 Before fitting a model, the raster is divided up into multiple sectors. Some of those sectors can then be used for training and others for validation. The selected sectors are all the same size and were created by moving from the top left corner to the bottom, the the right and diagonally. Approximately 40% of the sectors shall be used for validation.
 The following code creates the subrasters. Then, the training data is extracted at the location of reach sector and is plotted on top of each sector.
 ```{r}
+######################## Problem: some have NA's!
 trainingExtents <- c(
 	extent(-105000, -103000, -42000, -40000),
 	extent(-105000, -103000, -44000, -42000),
@@ -58,11 +48,16 @@ trainingExtents <- c(
 	extent(-97000, -95000, -46000, -44000),
 	extent(-97000, -95000, -48000, -46000)
 )
+# Shapes with classes used as training data
 trainingShapesAt <- lapply( rep("SpatialPointsDataFrame", length(trainingExtents)), new )
+# Full sectors used for plotting
 trainingSectors <- lapply( rep("RasterBrick", length(trainingExtents)), new )
-for(i in 1:length(trainingRasters)) {
+# Extracted values from sector at location of available training points
+trainingSectorValues <- c()
+for(i in 1:length(trainingExtents)) {
 	trainingShapesAt[[i]] <- crop(trainShapes, trainingExtents[[i]])
 	trainingSectors[[i]] <- crop(rasterJ, trainingExtents[[i]])
+	trainingSectorValues[[i]] <- extract(trainingSectors[[i]], trainingShapesAt[[i]])
 	plotRGB(trainingSectors[[i]],3,2,1)
 	plot(trainingShapesAt[[i]], add=TRUE, col=colors[trainFactor])
 }
@@ -91,10 +86,37 @@ for(i in 1:length(validationExtents)) {
 
 The next step is to fit a model by training with one sector in the training set. This study uses the random forest classifier.
 ```{r}
-trainingPosition <- 1
-trainDataFrame <- data.frame(rasterAtTrain, trainShapes)
+trainPos <- 1
+trainDataFrame <- data.frame(trainingSectorValues[[trainPos]], trainingShapesAt[[trainPos]])
+# Structure of the Data Frame:
+head(trainDataFrame, 5)
 forest <- randomForest(
-	x=train[,1:4],
-	y=trainFactor
+	x=trainDataFrame[,1:4],
+	y=as.factor(trainingShapesAt[[trainPos]]$Label)
 )
+```
+
+The above code trained the classifier with only one training sector. This classifier can be used to predict labels for new data. 
+In the following, the random forest model is used to predict the sector it has been trained with and plots the prediction results.
+```{r}
+prediction <- predict(trainingSectors[[trainPos]], forest, type="response",	na.rm=TRUE)
+plotRGB(trainingSectors[[trainPos]], 3, 2, 1)
+plot(prediction)
+```
+
+Just by observing the picture it is apparent that the model somewhat recognizes the landscape. Since there are correct values available for some points (that is, our training data) we can calculate the error rate on those points.
+The error can be calculated by counting the missclassifications and then dividing that number by the total number of training points available in the sector.
+```{r}
+calculateError <- function(prediction, actual) {
+	prediction <- extract(prediction, actual)
+	trainDiff <- prediction - actual
+	trainDiffCount <- 0
+	for(i in 1:length(prediction)) {
+		if(trainDiff[i] != 0) {
+			trainDiffCount <- trainDiffCount + 1
+		}
+	}
+	return(trainDiffCount  / length(trainDiff))
+}
+calculateError(prediction, trainingShapesAt[[trainPos]]$Label)
 ```

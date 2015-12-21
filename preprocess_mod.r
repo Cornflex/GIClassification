@@ -90,6 +90,7 @@ performKMeans <- function(inputRaster, noClusters) {
 }
 
 calculateError <- function(prediction, actual) {
+	prediction <- extract(prediction, actual)
 	trainDiff <- prediction - actual
 	trainDiffCount <- 0
 	for(i in 1:length(prediction)) {
@@ -99,7 +100,6 @@ calculateError <- function(prediction, actual) {
 	}
 	return(trainDiffCount  / length(trainDiff))
 }
-
 ##the tif file from Joel is a stack because it has 4 bands, or layers
 rasterJ<-brick("img\\J_04AUG14112729-M2AS-000000137917_01_P001_etrs89.TIF")
 #rasterE<-stack("E_04SEP24113435-M2AS-000000152724_01_P001_etrs89.TIF")
@@ -207,5 +207,4 @@ forest <- randomForest(
 
 # measure accuracy to determine optimal model fit
 relevantTrainShapes <- crop(trainShapes, ext)
-predictionMatch <- extract(prediction, relevantTrainShapes)
-trainError <- calculateError(predictionMatch, relevantTrainShapes$Label)
+trainError <- calculateError(prediction, relevantTrainShapes$Label)
