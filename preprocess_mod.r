@@ -1,3 +1,8 @@
+setwd("C:\\Users\\D059331\\Desktop\\DM GIC\\data\\")
+require('raster')
+require(sp)
+require(rgdal)
+require(randomForest)
 # Basic functions to pre-process satellite images
 # Contents:
 # raster.scale - normalizes the dataset
@@ -6,7 +11,6 @@
 # Author: J. D. Silva (Feb 2012)
 
 # Normalize a raster dataset
-
 raster.scale <- function(rst, norm="min-max") {
 	require(raster)
 	nbands <- nlayers(rst)
@@ -23,6 +27,7 @@ raster.scale <- function(rst, norm="min-max") {
 	return(scale(rst))
 }
 
+
 # Compute normalized difference (e.g. NDVI)
 normdiff <- function(stk, red=3, nir=4, stack.it=FALSE, normalize=FALSE, norm="min-max") {
 	require(raster)
@@ -34,11 +39,18 @@ normdiff <- function(stk, red=3, nir=4, stack.it=FALSE, normalize=FALSE, norm="m
 	redBand <- getValues(stk[[red]])
 	ndviBand <- (nirBand - redBand) / (nirBand + redBand)
 	if (normalize == TRUE) {
-		ndviBand <- raster.scale(ndviBand, norm=norm)
+		if (norm == "min-max") {
+			center <- min(ndviBand)
+			ampl <- max(ndviBand)-center
+		} else {
+			center <- mean(ndviBand)
+			ampl <- sd(ndviBand)
+		}
+		ndviBand <- scale(ndviBand, center=center, scale=ampl)
 	}
 	ndvi <- raster(nrows=dims[1], ncols=dims[2], crs=crs(stk), ext=extent(stk), resolution=res(stk), vals=ndviBand)
-	if (stack.it == FALSE) 
-		return(ndvi)	
+	if (stack.it == FALSE)
+		return(ndvi)
 	return(stack(stk, ndvi))
 }
 
@@ -67,41 +79,133 @@ mov.fun <- function(rst, window.size, fun, normalize=FALSE, verbose=FALSE) {
 	return(stk)
 }
 
+# function to calculate and plot kmeans for a raster object
+performKMeans <- function(inputRaster, noClusters) {
+	raster_df <- as.data.frame(inputRaster)
+	clustering <- kmeans(raster_df, noClusters, iter.max = 100, nstart = 10)
+	clusterRaster <- raster(inputRaster)
+	clusterRaster <- setValues(clusterRaster, clustering$cluster)
+	plot(clusterRaster)
+	return(clusterRaster)
+}
 
-##Kristen's stuff
-setwd("C:\\Users\\m2015382\\Documents\\data\\img")
+calculateError <- function(prediction, actual) {
+	trainDiff <- prediction - actual
+	trainDiffCount <- 0
+	for(i in 1:length(prediction)) {
+		if(trainDiff[i] != 0) {
+			trainDiffCount <- trainDiffCount + 1
+		}
+	}
+	return(trainDiffCount  / length(trainDiff))
+}
 
 ##the tif file from Joel is a stack because it has 4 bands, or layers
-rasterA<-stack("A_05SEP22114039-M2AS-005509561050_01_P001_etrs89.TIF")
+rasterJ<-brick("img\\J_04AUG14112729-M2AS-000000137917_01_P001_etrs89.TIF")
+#rasterE<-stack("E_04SEP24113435-M2AS-000000152724_01_P001_etrs89.TIF")
+#rasterA<-stack("A_05SEP22114039-M2AS-005509561050_01_P001_etrs89.TIF")
 
 
 
-##Scaling data with Joel´s function
-Ascale<-raster.scale(rasterA)
-Ascale
+# plot map
+plotRGB(rasterJ, 3,2,1)
 
-#caculating NDVI 
-ndvi=normdiff(Ascale)
-ndvi
+# choose an sector for clustering
+ext <- drawExtent()
+sector <- crop(rasterJ, ext)
+plotRGB(sector, 3, 2, 1)
 
-getValues(Ascale, row=10)
+# add normdiff layer for better vegetation recognition
+sector[[5]] <- normdiff(sector)
+# plot each layer separately
+plot(sector)
 
-plot(ndvi)
-plot(rasterA)
-#to just plot one band - not working though...
-plot(rasterA[[1]])
+# check for NA's
+summary(sector)
 
-#playing with summary
-summary(ndvi)
-summary(rasterA)
-summary(rasterA[[2]])
-summary(Ascale)
+# convert to dataframe and check for NA's
+#sector_df <- as.data.frame(sector)
+#summary(sector_df)
+
+# for some reason, now there are NA's in 2nd layer
+# lets remove it
+# plot(sector)
+# sector <- brick(
+# 	sector[[1]],
+# 	sector[[3]],
+# 	sector[[4]],
+# 	sector[[5]]
+# )
+# sector_df <- as.data.frame(sector)
+# summary(sector_df)
+
+# use only nir and ndvi layer for k-means
+sector_mod <- brick(sector[[4]],sector[[5]])
+
+# perform kmeans and plot result
+performKMeans(sector_mod, 12)
+
+### supervised
 
 
-#trying to create table from ndvi raster, not getting expected results, even though it 
-#plots properly above
-ndvitable<-getValues(ndvi)
-head(ndvitable, n=10)
-ndvitable
+rasterJ
+trainShapes <- readOGR(dsn="C:\\Users\\D059331\\Desktop\\DM GIC\\data\\shp\\trn", layer="J_treino_QB_point")
+
+nrow(trainShapes)
+plotRGB(rasterJ, 3, 2, 1)
 
 
+rasterAtTrain <- extract(rasterJ,trainShapes)
+train <- data.frame(rasterAtTrain, trainShapes)
+trainFactor <- as.factor(train[,7])
+#levels(trainFactor)
+#[1] "4"  "7"  "12" "21" "22" "31" "32" "34" "35" "36"
+# 10 levels
+colors <- c("#CC0000", "#FFD700", "#556B2F", "#008B8B", "#191970", "#8A2BE2", "#D8BFD8", "#8B4513", "#000000", "#FF6347")
+plot(trainShapes["Label"], add=TRUE, col=colors[trainFactor])
+# light blue = water, red = city
+
+forest <- randomForest(
+	x=train[,1:4],
+	y=trainFactor
+)
+plot(forest)
+varImpPlot(forest, type=1)
+#predict sector
+plotRGB(sector, 3,2,1)
+#prediction <- predict(rasterJ, forest, ext=ext, filename="ext1.tif", type="response", index=1, na.rm=TRUE, progress="window", overwrite=TRUE)
+prediction <- predict(rasterJ, forest, ext=ext, type="response", index=1, na.rm=TRUE, progress="window", overwrite=TRUE)
+prediction <- raster("RfClassPred.tif")
+plotRGB(sector,3,2,1)
+plot(prediction, add=TRUE, col=colors[trainFactor])
+
+
+plotRGB(rasterJ, 3,2,1)
+plot(trainShapes, add=TRUE)
+head(trainShapes)
+head(trainShapes@data)
+head(v)
+
+
+## with complete training data
+trainShapesTotal <- readOGR(dsn="C:\\Users\\D059331\\Desktop\\DM GIC\\data\\shp\\trn", layer="J_treino_QB_Tot_point")
+plotRGB(rasterJ, 3, 2, 1)
+plot(trainShapesTotal["Label"], add=TRUE, col=color)
+rasterAtTrainTotal <- extract(rasterJ,trainShapesTotal)
+trainTotal <- data.frame(rasterAtTrainTotal, trainShapesTotal)
+trainTotalFactor <- as.factor(trainTotal[,7])
+#levels(trainTotalFactor)
+#[1] "4"  "7"  "12" "21" "22" "31" "32" "34" "35" "36"
+# 10 levels
+colors <- c("#CC0000", "#FFD700", "#556B2F", "#008B8B", "#191970", "#8A2BE2", "#D8BFD8", "#8B4513", "#000000", "#FF6347")
+plot(trainShapesTotal["Label"], add=TRUE, col=colors[trainTotalFactor])
+forest <- randomForest(
+	x=trainTotal[,1:4],
+	y=)
+)
+
+
+# measure accuracy to determine optimal model fit
+relevantTrainShapes <- crop(trainShapes, ext)
+predictionMatch <- extract(prediction, relevantTrainShapes)
+trainError <- calculateError(predictionMatch, relevantTrainShapes$Label)

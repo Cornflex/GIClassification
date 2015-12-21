@@ -1,0 +1,64 @@
+# Supervised Classification
+Since results of unsupervised clustering are not quite satisfying and human-created training data is available,
+supervised classification may be a way to achieve more accurate results.
+
+```{r, echo=FALSE}
+# Set up
+require('raster')
+require(sp)
+require(rgdal)
+require(randomForest)
+
+calculateError <- function(prediction, actual) {
+	trainDiff <- prediction - actual
+	trainDiffCount <- 0
+	for(i in 1:length(prediction)) {
+		if(trainDiff[i] != 0) {
+			trainDiffCount <- trainDiffCount + 1
+		}
+	}
+	return(trainDiffCount  / length(trainDiff))
+}
+```
+
+Using packages "sp" and "rgdal", shape files can be read which contain geometric shapes (in ths case points) associated with classes.
+The first line of the following reads the shapes. The labels of each point are then converted to a factor, which contains levels for each label, thereby recognizing the different categories.
+```{r}
+trainShapes <- readOGR(dsn="C:\\Users\\D059331\\Desktop\\DM GIC\\data\\shp\\trn", layer="J_treino_QB_Tot_point")
+trainFactor <- as.factor(trainShapes$Label)
+length(levels(trainFactor))
+```
+As shown in the output, there are 10 different labels in the training set. A color vector of 10 different colors is created in order to plot the different labels on the image.
+```{r}
+colors <- c("#CC0000", "#FFD700", "#0CCC0C", "#008B8B", "#191970", "#8A2BE2", "#D8BFD8", "#8B4513", "#000000", "#FF6347")
+# Plot the raster
+plotRGB(rasterJ,3,2,1)
+plot(trainShapes, add=TRUE, col=colors[trainFactor])
+```
+
+Before fitting a model, the raster is divided up into multiple sectors. Some of those sectors can then be used for training and others for validation. The selected sectors are all the same size and were created by moving from the top left corner to the bottom, the the right and diagonally. Approximately 40% of the sectors shall be used for validation. The following code creates the subrasters and plots each of them with the training data.
+```{r}
+trainingRasters <- c(
+	crop(rasterJ,extent(-105000, -103000, -42000, -40000)),
+	crop(rasterJ,extent(-103000, -101000, -42000, -40000)),
+	crop(rasterJ,extent(-99000, -97000, -42000, -40000)),
+	crop(rasterJ,extent(-105000, -103000, -44000, -42000)),
+	crop(rasterJ,extent(-105000, -103000, -48000, -46000)),
+	crop(rasterJ,extent(-103000, -101000, -44000, -42000)),
+	crop(rasterJ,extent(-99000, -97000, -48000, -46000))
+)
+validationRasters <- c(
+	crop(rasterJ,extent(-101000, -99000, -42000, -40000)),
+	crop(rasterJ,extent(-105000, -103000, -46000, -44000)),
+	crop(rasterJ,extent(-101000, -99000, -46000, -44000)),
+	crop(rasterJ,extent(-97000, -95000, -50000, -48000))
+)
+for(i in 1:length(trainingRasters)) {
+	plotRGB(trainingRasters[[i]],3,2,1)
+	plot(trainShapes, add=TRUE, col=colors[trainFactor])
+}
+for(i in 1:length(validationRasters)) {
+	plotRGB(validationRasters[[i]],3,2,1)
+	plot(trainShapes, add=TRUE, col=colors[trainFactor])
+}
+```
