@@ -19,6 +19,8 @@ calculateError <- function(prediction, actual) {
 	}
 	return(trainDiffCount  / length(trainDiff))
 }
+
+rasterJ<-brick("C:\\Users\\D059331\\Desktop\\DM GIC\\data\\img\\J_04AUG14112729-M2AS-000000137917_01_P001_etrs89.TIF")
 ```
 
 Using packages "sp" and "rgdal", shape files can be read which contain geometric shapes (in ths case points) associated with classes.
@@ -36,29 +38,63 @@ plotRGB(rasterJ,3,2,1)
 plot(trainShapes, add=TRUE, col=colors[trainFactor])
 ```
 
-Before fitting a model, the raster is divided up into multiple sectors. Some of those sectors can then be used for training and others for validation. The selected sectors are all the same size and were created by moving from the top left corner to the bottom, the the right and diagonally. Approximately 40% of the sectors shall be used for validation. The following code creates the subrasters and plots each of them with the training data.
+Before fitting a model, the raster is divided up into multiple sectors. Some of those sectors can then be used for training and others for validation. The selected sectors are all the same size and were created by moving from the top left corner to the bottom, the the right and diagonally. Approximately 40% of the sectors shall be used for validation.
+The following code creates the subrasters. Then, the training data is extracted at the location of reach sector and is plotted on top of each sector.
 ```{r}
-trainingRasters <- c(
-	crop(rasterJ,extent(-105000, -103000, -42000, -40000)),
-	crop(rasterJ,extent(-103000, -101000, -42000, -40000)),
-	crop(rasterJ,extent(-99000, -97000, -42000, -40000)),
-	crop(rasterJ,extent(-105000, -103000, -44000, -42000)),
-	crop(rasterJ,extent(-105000, -103000, -48000, -46000)),
-	crop(rasterJ,extent(-103000, -101000, -44000, -42000)),
-	crop(rasterJ,extent(-99000, -97000, -48000, -46000))
+trainingExtents <- c(
+	extent(-105000, -103000, -42000, -40000),
+	extent(-105000, -103000, -44000, -42000),
+	extent(-105000, -103000, -46000, -44000),
+	extent(-103000, -101000, -42000, -40000),
+	extent(-103000, -101000, -44000, -42000),
+	extent(-103000, -101000, -50000, -48000),
+	extent(-101000, -99000, -42000, -40000),
+	extent(-101000, -99000, -48000, -46000),
+	extent(-101000, -99000, -50000, -48000),
+	extent(-99000, -97000, -46000, -44000),
+	extent(-99000, -97000, -48000, -46000),
+	extent(-99000, -97000, -50000, -48000),
+	extent(-97000, -95000, -44000, -42000),
+	extent(-97000, -95000, -46000, -44000),
+	extent(-97000, -95000, -48000, -46000)
 )
-validationRasters <- c(
-	crop(rasterJ,extent(-101000, -99000, -42000, -40000)),
-	crop(rasterJ,extent(-105000, -103000, -46000, -44000)),
-	crop(rasterJ,extent(-101000, -99000, -46000, -44000)),
-	crop(rasterJ,extent(-97000, -95000, -50000, -48000))
-)
+trainingShapesAt <- lapply( rep("SpatialPointsDataFrame", length(trainingExtents)), new )
+trainingSectors <- lapply( rep("RasterBrick", length(trainingExtents)), new )
 for(i in 1:length(trainingRasters)) {
-	plotRGB(trainingRasters[[i]],3,2,1)
-	plot(trainShapes, add=TRUE, col=colors[trainFactor])
+	trainingShapesAt[[i]] <- crop(trainShapes, trainingExtents[[i]])
+	trainingSectors[[i]] <- crop(rasterJ, trainingExtents[[i]])
+	plotRGB(trainingSectors[[i]],3,2,1)
+	plot(trainingShapesAt[[i]], add=TRUE, col=colors[trainFactor])
 }
-for(i in 1:length(validationRasters)) {
-	plotRGB(validationRasters[[i]],3,2,1)
-	plot(trainShapes, add=TRUE, col=colors[trainFactor])
+
+validationExtents <- c(
+	extent(-105000, -103000, -48000, -46000),
+	extent(-105000, -103000, -50000, -48000),
+	extent(-103000, -101000, -46000, -44000),
+	extent(-103000, -101000, -48000, -46000),
+	extent(-101000, -99000, -44000, -42000),
+	extent(-101000, -99000, -46000, -44000),
+	extent(-99000, -97000, -42000, -40000),
+	extent(-99000, -97000, -44000, -42000),
+	extent(-97000, -95000, -42000, -40000),
+	extent(-97000, -95000, -50000, -48000)
+)
+validationShapesAt <- lapply( rep("SpatialPointsDataFrame", length(validationExtents)), new )
+validationSectors <- lapply( rep("RasterBrick", length(validationExtents)), new )
+for(i in 1:length(validationExtents)) {
+	validationShapesAt[[i]] <- crop(trainShapes, validationExtents[[i]])
+	validationSectors[[i]] <- crop(rasterJ, validationExtents[[i]])
+	plotRGB(validationSectors[[i]],3,2,1)
+	plot(validationShapesAt[[i]], add=TRUE, col=colors[trainFactor], pch=".")
 }
+```
+
+The next step is to fit a model by training with one sector in the training set. This study uses the random forest classifier.
+```{r}
+trainingPosition <- 1
+trainDataFrame <- data.frame(rasterAtTrain, trainShapes)
+forest <- randomForest(
+	x=train[,1:4],
+	y=trainFactor
+)
 ```
