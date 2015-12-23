@@ -157,7 +157,6 @@ sectorMovings
 
 -We see that NA values are a very small percentage of total cells (less than one percent) of all cells#they are not visible in the plots
 ```{r}
-sectorMovings
 plot(sectorMovings)
 ```
 
@@ -186,7 +185,7 @@ plot(sectorMovingsTrim)
 
 -Normalize the ten layer stack because the range of values and variation differ between the RGB and infrared bands the NDVI. The five layers measuring the standard deviation also have a different range and variation level.
 ```{r}
-sectorMovingsTrimNorm<-raster.scale(sectorMeansTrim)
+sectorMovingsTrimNorm<-raster.scale(sectorMovingsTrim)
 sectorMovingsTrimNorm
 ```
 

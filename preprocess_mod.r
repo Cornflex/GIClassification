@@ -212,12 +212,23 @@ sector_all_norm
 performKMeans(sector_all_norm,6)
 #does not look good
 
+
+
+
+
 #try kmeans on just the normalized moving stack, which had good results when 
 #not normalized
 performKMeans(sectorMovingsTrim,6)
-sectorMovingsTrimNorm<-raster.scale(sectorMeansTrim)
-sectorMovingsTrimNorm
-performKMeans(sectorMeansTrimNorm,6)
+sectorMovingsTrimNorm<-raster.scale(sectorMovingsTrim)
+plot(sectorMovingsTrimNorm)
+
+#figuring out number of clusters
+firstClust<-performKMeans(sectorMovingsTrimNorm,50)
+fit <- hclust(first, method="ward")
+plot(fit) # display dendogram
+
+gc()
+
 
 #cant try kmeans on non normalized stack of ten because layer two gets NA values
 #when converted to data frame (which is a step in kmeans)
