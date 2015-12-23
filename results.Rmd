@@ -10,10 +10,12 @@ with the goal of identifying meaningfull clusters that represent different geogr
 ```{r, echo=FALSE}
 # Set up
 #setwd("C:\\Users\\D059331\\Desktop\\DM GIC\\data\\img")
-require('raster')
+require(raster)
 require(sp)
 require(rgdal)
 require(randomForest)
+require(cluster)
+memory.limit(size=24000) # allocate 3 GB of memory
 # Normalize a raster dataset
 
 raster.scale <- function(rst, norm="min-max") {
@@ -85,13 +87,20 @@ mov.fun <- function(rst, window.size, fun, normalize=FALSE, verbose=FALSE) {
 }
 
 # function to calculate and plot kmeans for a raster object
-performKMeans <- function(inputRaster, noClusters) {
+performKMeans <- function(inputRaster, noClusters, output="raster", algorithm="MacQueen") {
 	raster_df <- as.data.frame(inputRaster)
-	clustering <- kmeans(raster_df, noClusters, iter.max = 100, nstart = 10)
+	clustering <- kmeans(raster_df, noClusters, iter.max = 5000, nstart = 10, algorithm=algorithm)
 	clusterRaster <- raster(inputRaster)
 	clusterRaster <- setValues(clusterRaster, clustering$cluster)
-	plot(clusterRaster)
-	#return(clustering)
+	if(output == "raster") {
+		return(clusterRaster)
+	}
+	if(output == "centers") {
+		return(clustering$centers)
+	}
+	else {
+		return(clustering)
+	}
 }
 
 calculateError <- function(prediction, actual) {
@@ -107,8 +116,8 @@ calculateError <- function(prediction, actual) {
 
 - Load a raster file, which has 4 layers
 ```{r}
-rasterJ<-brick("C:\\Users\\Owner\\Documents\\Portugal\\Sat_Image_Classification\\data\\data\\img\\J_04AUG14112729-M2AS-000000137917_01_P001_etrs89.TIF")
-#rasterJ<-brick("C:\\Users\\D059331\\Desktop\\DM GIC\\data\\img\\J_04AUG14112729-M2AS-000000137917_01_P001_etrs89.TIF")
+#rasterJ<-brick("C:\\Users\\Owner\\Documents\\Portugal\\Sat_Image_Classification\\data\\data\\img\\J_04AUG14112729-M2AS-000000137917_01_P001_etrs89.TIF")
+rasterJ<-brick("C:\\Users\\D059331\\Desktop\\DM GIC\\data\\img\\J_04AUG14112729-M2AS-000000137917_01_P001_etrs89.TIF")
 rasterJ
 ```
 - Plot map
@@ -149,55 +158,66 @@ sectorMovings<-brick(stk)
 summary(sectorMovings)
 ```
 
--We see that there are equal NA values in each layer
+- We see that there are equal NA values in each layer
 We get dimension information to determine number of cells in total in each layer
 ```{r}
 sectorMovings
 ```
 
--We see that NA values are a very small percentage of total cells (less than one percent) of all cells#they are not visible in the plots
+- We see that NA values are a very small percentage of total cells (less than one percent) of all cells#they are not visible in the plots
 ```{r}
 plot(sectorMovings)
 ```
 
--use trim to remove NA values
--from documentation: Trim (shrink) a Raster* object by removing outer rows and columns that all have the same value (e.g. NA). 
--Check output for NA values
-```{r}
-
-sectorMovingsTrim<-trim(sectorMovings, padding=0, values=NA)
-
-```
--No NA values in any layers
--Plote output of trim to see if any issues
+- from documentation: Trim (shrink) a Raster* object by removing outer rows and columns that all have the same value (e.g. NA). 
+- Plot output of trim to see if NAs were fixed
 ```{r}
 sectorMovingsTrim<-trim(sectorMovings, padding=0, values=NA)
 summary(sectorMovingsTrim)
 plot(sectorMovingsTrim)
 ```
--It looks good. The moving function may have created NA values around edges, maybe where a full three by three grid could not be made.
 
--determine kmeans seed values
-```{r}
-
-```
-
-
--Normalize the ten layer stack because the range of values and variation differ between the RGB and infrared bands the NDVI. The five layers measuring the standard deviation also have a different range and variation level.
+- It looks good. The moving function may have created NA values around edges, maybe where a full three by three grid could not be made.
+- Normalize the ten layer stack because the range of values and variation differ between the RGB and infrared bands the NDVI. The five layers measuring the standard deviation also have a different range and variation level.
 ```{r}
 sectorMovingsTrimNorm<-raster.scale(sectorMovingsTrim)
 sectorMovingsTrimNorm
 ```
 
--run kmeans on the normalized ten layer stack.
+```{r, echo=FALSE}
+# clean up memory for better kmeans performance
+stk <- NULL
+sectorMovings <- NULL
+sectorMovingsTrim <- NULL
+gc()
+```
+- run kmeans on the normalized ten layer stack.
+- first attempt with 50 clusters, then determine number of clusters by applying wards method on intercluster distance
 ```{r}
-performKMeans(sectorMovingsTrim,6)
+kmeansResults <- performKMeans(sectorMovingsTrimNorm, 50, output="kmeans")
+interClusterDistance <- dist(kmeansResults$centers, method="euclidian")
+clusterHierarchy <- hclust(interClusterDistance, method="ward.D")
+plot(clusterHierarchy)
 ```
 
+- calculate sum of squared distances within clusters for different ks
+```{r}
+wss<-rep(1,15)
+for(i in 1:15){
+  wss[i]<-performKMeans(sectorMovingsTrimNorm,i,output="kmeans")$tot.withinss
+}
+wss
+plot(wss,type="line")
+```
+- decide to use 8 clusters (graphical argument)
+```{r}
+clusterRaster <- performKMeans(sectorMovingsTrimNorm, 8)
+plot(clusterRaster)
+```
 
--Assess the clusters we have found
--RAQUEL any writing about how we assess clusters (generally, or in R)
+- Assess the clusters we have found
+- RAQUEL any writing about how we assess clusters (generally, or in R)
 ```{r}
 
 ```
--Add the the supervised report here
+- Add the the supervised report here
