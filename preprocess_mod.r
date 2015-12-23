@@ -1,8 +1,11 @@
-setwd("C:\\Users\\D059331\\Desktop\\DM GIC\\data\\")
+#setwd("C:\\Users\\D059331\\Desktop\\DM GIC\\data\\")
+##Kristen's wd
+setwd('C:\\Users\\Owner\\Documents\\Portugal\\Sat_Image_Classification\\data\\data')
 require('raster')
 require(sp)
 require(rgdal)
 require(randomForest)
+require(rmarkdown)
 # Basic functions to pre-process satellite images
 # Contents:
 # raster.scale - normalizes the dataset
@@ -100,6 +103,8 @@ calculateError <- function(prediction, actual) {
 	return(trainDiffCount  / length(trainDiff))
 }
 
+
+
 ##the tif file from Joel is a stack because it has 4 bands, or layers
 rasterJ<-brick("img\\J_04AUG14112729-M2AS-000000137917_01_P001_etrs89.TIF")
 #rasterE<-stack("E_04SEP24113435-M2AS-000000152724_01_P001_etrs89.TIF")
@@ -110,7 +115,7 @@ rasterJ<-brick("img\\J_04AUG14112729-M2AS-000000137917_01_P001_etrs89.TIF")
 # plot map
 plotRGB(rasterJ, 3,2,1)
 
-# choose an sector for clustering
+# choose a sector for clustering
 ext <- drawExtent()
 sector <- crop(rasterJ, ext)
 plotRGB(sector, 3, 2, 1)
@@ -119,6 +124,7 @@ plotRGB(sector, 3, 2, 1)
 sector[[5]] <- normdiff(sector)
 # plot each layer separately
 plot(sector)
+plotRGB(sector, 3,2,1)
 
 # check for NA's
 summary(sector)
@@ -143,9 +149,84 @@ summary(sector)
 sector_mod <- brick(sector[[4]],sector[[5]])
 
 # perform kmeans and plot result
-performKMeans(sector_mod, 12)
+performKMeans(sector_mod, 6)
+performKMeans(sector,6)
 
-### supervised
+#Using focal function to calculate mean, stddev values 
+#for a neighborhood of cells
+means<-mov.fun(sector,3,mean, normalize=FALSE, verbose=TRUE)
+sds<-mov.fun(sector,3,sd, normalize=FALSE, verbose=TRUE)
+#convert output of above to brick and summarize to check for na values
+stk<-stack(means,sds)
+sectorMovings<-brick(stk)
+summary(sectorMovings)
+#We see that there are equal NA values in each layer
+#We get dimension information to determine number of cells in total in each layer
+sectorMovings
+#Plot the layers to see if the NA values are noticeable (grouped together for example)
+
+#We see that NA values are a very small percentage of total cells (less than one percent) of all cells
+plot(sectorMovings)
+#they are not visible in the plots
+
+#use trim to remove NA values
+#from documentation: Trim (shrink) a Raster* object by removing outer rows and columns that all have the same value (e.g. NA). 
+sectorMovingsTrim<-trim(sectorMovings, padding=0, values=NA)
+#Check output for NA values
+summary(sectorMovingsTrim)
+#No NA values in any layers
+sectorMovingsTrim
+#Plote output of trim to see if any issues
+plot(sectorMovingsTrim)
+#It looks good. The moving function may have created NA values around edges, maybe where a full
+#three by three grid could not be made.
+
+#Resize extent of sector brick to match the mean trimmed so they can be stacked
+newExtent <- extent(sectorMovingsTrim)
+sectorModCrop <- crop(sector_mod,newExtent)
+
+# #Can trim solve the issue of layer 2 having NA values when it converts to data frame?
+# sector_df <- as.data.frame(sector[[2]])
+# summary(sector_df)
+# sector_trim<-trim(sector_df, padding=0, values=NA)
+# summary(sector_trim)
+# plot(sector[[2]])
+# #Nope, doesn't remove and NA values, this means the NA values are not around the edges
+# #What happeens if we normalize the layer?
+# sector_norm<-raster.scale(sector[[2]])
+# summary(sector_norm)
+
+#test kmeans on just the movings stack, which is ten layers, means and sds of the original five layers
+performKMeans(sectorMovingsTrim,6)
+#
+
+#combine movings stack with original 5 layer stack to get 15 layers
+stk <- stack(sectorMovingsTrim,sectorModCrop)
+sector_all<-brick(stk)
+sector_all
+#Normalize the stack
+sector_all_norm<-raster.scale(sector_all)
+sector_all_norm
+#Perform kmeans on this normalized stack
+performKMeans(sector_all_norm,6)
+#does not look good
+
+#try kmeans on just the normalized mean stack, which had good results when 
+#not normalized
+performKMeans(sectorMeansTrim,6)
+sectorMeansTrimNorm<-raster.scale(sectorMeansTrim)
+sectorMeansTrimNorm
+performKMeans(sectorMeansTrim,6)
+
+#cant try kmeans on non normalized stack of ten
+performKMeans(sector_all,6)
+
+#ok, go back and do the felix number of bands
+#add these to 
+
+
+
+  ### supervised
 
 
 rasterJ
