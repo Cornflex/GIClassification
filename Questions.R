@@ -1,17 +1,13 @@
-Clustering and Classification of Satellite Imagery
-----------------------------------------------------
-# Unsupervised Clustering
-This section will use unsupervised clustering to split up given satellite images into several groups,
-with the goal of identifying meaningfull clusters that represent different geographic features such as water, farm land, forest or buildings.
+# Questions.R
+############################################################################
+# SET UP
+############################################################################
 
-```{r, echo=FALSE}
-# Set up
-#setwd("C:\\Users\\D059331\\Desktop\\DM GIC\\data\\img")
+setwd("C:\\Users\\D059331\\Desktop\\DM GIC\\data\\")
 require('raster')
 require(sp)
 require(rgdal)
 require(randomForest)
-# Normalize a raster dataset
 
 raster.scale <- function(rst, norm="min-max") {
 	require(raster)
@@ -88,77 +84,73 @@ performKMeans <- function(inputRaster, noClusters) {
 	clusterRaster <- raster(inputRaster)
 	clusterRaster <- setValues(clusterRaster, clustering$cluster)
 	plot(clusterRaster)
-	#return(clustering)
+	return(clusterRaster)
 }
 
 calculateError <- function(prediction, actual) {
-	trainDiff <- predictionMatch - train[,7]
+	trainDiff <- prediction - actual
 	trainDiffCount <- 0
-	for(i in 1:length(trainDiff)) {
+	for(i in 1:length(prediction)) {
 		if(trainDiff[i] != 0) {
 			trainDiffCount <- trainDiffCount + 1
 		}
 	}
+	return(trainDiffCount  / length(trainDiff))
 }
-```
 
-- Load a raster file, which has 4 layers
-```{r}
-rasterJ<-brick("C:\\Users\\Owner\\Documents\\Portugal\\Sat_Image_Classification\\data\\data\\img\\J_04AUG14112729-M2AS-000000137917_01_P001_etrs89.TIF")
-#rasterJ<-brick("C:\\Users\\D059331\\Desktop\\DM GIC\\data\\img\\J_04AUG14112729-M2AS-000000137917_01_P001_etrs89.TIF")
-rasterJ
-```
-- Plot map
-```{r}
+rasterJ<-brick("img\\J_04AUG14112729-M2AS-000000137917_01_P001_etrs89.TIF")
+
+############################################################################
+# Raster A and E seem to be in a strange color format.
+# How can we work with them?
+############################################################################
+rasterA <- brick("img\\A_05SEP22114039-M2AS-005509561050_01_P001_etrs89.TIF")
+summary(rasterA) # looks good
+plotRGB(rasterA, 3, 2, 1) # Nothing
+plot(rasterA) # reverse NA
+rasterAScaled <- raster.scale(rasterA)
+plot(rasterAScaled) # Nothing new
+ndviA <- normdiff(rasterA)
+plot(ndviA) # this works!
+
+
+############################################################################
+# Why does the second layer contain NA's after data frame conversion?
+############################################################################
+# plot map
 plotRGB(rasterJ, 3,2,1)
-```
 
-- choose a sector for clustering
-```{r}
-ext <- extent(-104294.4, -102964.5, -43623.48, -42742.44 )
+# choose an sector for clustering
+ext <- drawExtent()
 sector <- crop(rasterJ, ext)
 plotRGB(sector, 3, 2, 1)
-```
 
-- add normdiff layer for better vegetation recognition
-```{r}
-sector[[5]] <- normdiff(sector)
-```
-- plot each layer separately
-```{r}
-plot(sector)
-```
-
-- check for NAs
-```{r}
+# check for NA's
 summary(sector)
-```
-- use only nir and ndvi layer for k-means
-```{r}
-sector_mod <- brick(sector[[4]],sector[[5]])
-```
 
-- perform kmeans and plot result
-```{r}
-performKMeans(sector_mod, 12)
-```
+# convert to dataframe and check for NA's
+sector_df <- as.data.frame(sector)
+summary(sector_df)
 
-K-Means doesnt seem to perform very well on this sector. Ocean and land arent clearly separated. Maybe this works better with fewer clusters (i.e. lower k).
-```{r}
-performKMeans(sector_mod, 6)
-```
+# may be related to data type, 8bit arith caused
 
-Lets try instead a different sector, one without ocean.
-```{r}
-ext <- extent(-101751, -100703.7, -47812.61, -46914.94)
-landSector <- crop(rasterJ, ext)
-landSector[[5]] <- normdiff(landSector)
-plotRGB(landSector, 3, 2, 1)
-landSector_mod <- brick(landSector[[4]],landSector[[5]])
-performKMeans(landSector_mod, 12)
-```
+############################################################################
+# Hints on unsupervised clustering?
+############################################################################
 
-This is not too awesome. Try 6 clusters.
-```{r}
-performKMeans(landSector_mod, 12)
-```
+# use more features
+# high resolution is a challenge -> maybe group pixels together
+# add mean, std for moving windows (try 3x3) (for each band -> 15 features)
+# -> helps to understand structure, which explains which class
+# be aware of size growth, e.g. scale computed values down to 8-bit
+
+# clean data inconsistencies:
+# use unsupervised alg. to cluster
+# compare labels to clusters, find the ones that don't match
+# those are likely wrong
+# => majority of same label are in same cluster; 
+# the ones that are not are probably labeled wrong
+
+# random forest is not completely deterministic, has some randomness -> works well when data is inconsistent
+# compare random forest of consistent and inconsistent training data -> maybe not so different
+# svm may be better for consistent data
