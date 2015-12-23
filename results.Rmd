@@ -1,6 +1,9 @@
 Clustering and Classification of Satellite Imagery
 ----------------------------------------------------
+#Abstract
+-RAQUEL
 # Unsupervised Clustering
+-RAQUEL any intro stuff about this topic, feell free to use references
 This section will use unsupervised clustering to split up given satellite images into several groups,
 with the goal of identifying meaningfull clusters that represent different geographic features such as water, farm land, forest or buildings.
 
@@ -129,36 +132,73 @@ sector[[5]] <- normdiff(sector)
 plot(sector)
 ```
 
-- check for NAs
+- Get summary statistics of layers. Note that there are no NAs
 ```{r}
 summary(sector)
 ```
-- use only nir and ndvi layer for k-means
+- Input each of the five layers to the moving function. This creates windows of three by three pixels and calculates the mean and standard deviation of the pixels in these windows.Returns five rasters with these mean and standard deviation values filled in to the pixels.
 ```{r}
-sector_mod <- brick(sector[[4]],sector[[5]])
+means<-mov.fun(sector,3,mean, normalize=FALSE, verbose=TRUE)
+sds<-mov.fun(sector,3,sd, normalize=FALSE, verbose=TRUE)
 ```
 
-- perform kmeans and plot result
+- convert output of above to brick and summarize to check for na values
 ```{r}
-performKMeans(sector_mod, 12)
+stk<-stack(means,sds)
+sectorMovings<-brick(stk)
+summary(sectorMovings)
 ```
 
-K-Means doesnt seem to perform very well on this sector. Ocean and land arent clearly separated. Maybe this works better with fewer clusters (i.e. lower k).
+-We see that there are equal NA values in each layer
+We get dimension information to determine number of cells in total in each layer
 ```{r}
-performKMeans(sector_mod, 6)
+sectorMovings
 ```
 
-Lets try instead a different sector, one without ocean.
+-We see that NA values are a very small percentage of total cells (less than one percent) of all cells#they are not visible in the plots
 ```{r}
-ext <- extent(-101751, -100703.7, -47812.61, -46914.94)
-landSector <- crop(rasterJ, ext)
-landSector[[5]] <- normdiff(landSector)
-plotRGB(landSector, 3, 2, 1)
-landSector_mod <- brick(landSector[[4]],landSector[[5]])
-performKMeans(landSector_mod, 12)
+sectorMovings
+plot(sectorMovings)
 ```
 
-This is not too awesome. Try 6 clusters.
+-use trim to remove NA values
+-from documentation: Trim (shrink) a Raster* object by removing outer rows and columns that all have the same value (e.g. NA). 
+-Check output for NA values
 ```{r}
-performKMeans(landSector_mod, 12)
+
+sectorMovingsTrim<-trim(sectorMovings, padding=0, values=NA)
+
 ```
+-No NA values in any layers
+-Plote output of trim to see if any issues
+```{r}
+sectorMovingsTrim<-trim(sectorMovings, padding=0, values=NA)
+summary(sectorMovingsTrim)
+plot(sectorMovingsTrim)
+```
+-It looks good. The moving function may have created NA values around edges, maybe where a full three by three grid could not be made.
+
+-determine kmeans seed values
+```{r}
+
+```
+
+
+-Normalize the ten layer stack because the range of values and variation differ between the RGB and infrared bands the NDVI. The five layers measuring the standard deviation also have a different range and variation level.
+```{r}
+sectorMovingsTrimNorm<-raster.scale(sectorMeansTrim)
+sectorMovingsTrimNorm
+```
+
+-run kmeans on the normalized ten layer stack.
+```{r}
+performKMeans(sectorMovingsTrim,6)
+```
+
+
+-Assess the clusters we have found
+-RAQUEL any writing about how we assess clusters (generally, or in R)
+```{r}
+
+```
+-Add the the supervised report here

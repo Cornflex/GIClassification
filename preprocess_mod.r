@@ -116,7 +116,7 @@ rasterJ<-brick("img\\J_04AUG14112729-M2AS-000000137917_01_P001_etrs89.TIF")
 plotRGB(rasterJ, 3,2,1)
 
 # choose a sector for clustering
-ext <- drawExtent()
+ext <- extent(-104294.4, -102964.5, -43623.48, -42742.44 )
 sector <- crop(rasterJ, ext)
 plotRGB(sector, 3, 2, 1)
 
@@ -146,16 +146,17 @@ summary(sector)
 # summary(sector_df)
 
 # use only nir and ndvi layer for k-means
-sector_mod <- brick(sector[[4]],sector[[5]])
+#sector_mod <- brick(sector[[4]],sector[[5]])
 
 # perform kmeans and plot result
-performKMeans(sector_mod, 6)
-performKMeans(sector,6)
+#performKMeans(sector_mod, 6)
+#performKMeans(sector,6)
 
 #Using focal function to calculate mean, stddev values 
 #for a neighborhood of cells
 means<-mov.fun(sector,3,mean, normalize=FALSE, verbose=TRUE)
 sds<-mov.fun(sector,3,sd, normalize=FALSE, verbose=TRUE)
+
 #convert output of above to brick and summarize to check for na values
 stk<-stack(means,sds)
 sectorMovings<-brick(stk)
@@ -163,7 +164,7 @@ summary(sectorMovings)
 #We see that there are equal NA values in each layer
 #We get dimension information to determine number of cells in total in each layer
 sectorMovings
-#Plot the layers to see if the NA values are noticeable (grouped together for example)
+
 
 #We see that NA values are a very small percentage of total cells (less than one percent) of all cells
 plot(sectorMovings)
@@ -182,8 +183,8 @@ plot(sectorMovingsTrim)
 #three by three grid could not be made.
 
 #Resize extent of sector brick to match the mean trimmed so they can be stacked
-newExtent <- extent(sectorMovingsTrim)
-sectorModCrop <- crop(sector_mod,newExtent)
+#newExtent <- extent(sectorMovingsTrim)  ##not using these layers for kmeans, using the mean and std
+#sectorModCrop <- crop(sector_mod,newExtent)
 
 # #Can trim solve the issue of layer 2 having NA values when it converts to data frame?
 # sector_df <- as.data.frame(sector[[2]])
@@ -211,18 +212,17 @@ sector_all_norm
 performKMeans(sector_all_norm,6)
 #does not look good
 
-#try kmeans on just the normalized mean stack, which had good results when 
+#try kmeans on just the normalized moving stack, which had good results when 
 #not normalized
-performKMeans(sectorMeansTrim,6)
-sectorMeansTrimNorm<-raster.scale(sectorMeansTrim)
-sectorMeansTrimNorm
-performKMeans(sectorMeansTrim,6)
+performKMeans(sectorMovingsTrim,6)
+sectorMovingsTrimNorm<-raster.scale(sectorMeansTrim)
+sectorMovingsTrimNorm
+performKMeans(sectorMeansTrimNorm,6)
 
-#cant try kmeans on non normalized stack of ten
-performKMeans(sector_all,6)
+#cant try kmeans on non normalized stack of ten because layer two gets NA values
+#when converted to data frame (which is a step in kmeans)
+#performKMeans(sector_all,6)
 
-#ok, go back and do the felix number of bands
-#add these to 
 
 
 
