@@ -10,21 +10,22 @@ require(rgdal)
 require(randomForest)
 
 rasterJ<-brick("C:\\Users\\D059331\\Desktop\\DM GIC\\data\\img\\J_04AUG14112729-M2AS-000000137917_01_P001_etrs89.TIF")
+memory.limit(size=24000) # allocate 3 GB of memory
 ```
 
 Using packages "sp" and "rgdal", shape files can be read which contain geometric shapes (in ths case points) associated with classes.
 The first line of the following reads the shapes. The labels of each point are then converted to a factor, which contains levels for each label, thereby recognizing the different categories.
 ```{r}
-trainShapes <- readOGR(dsn="C:\\Users\\D059331\\Desktop\\DM GIC\\data\\shp\\trn", layer="J_treino_QB_Tot_point")
-trainFactor <- as.factor(trainShapes$Label)
+allTrainShapes <- readOGR(dsn="C:\\Users\\D059331\\Desktop\\DM GIC\\data\\shp\\trn", layer="J_treino_QB_Tot_point")
+trainFactor <- as.factor(allTrainShapes$Label)
 length(levels(trainFactor))
 ```
 As shown in the output, there are 10 different labels in the training set. A color vector of 10 different colors is created in order to plot the different labels on the image.
 ```{r}
-colors <- c("#CC0000", "#FFD700", "#0CCC0C", "#008B8B", "#191970", "#8A2BE2", "#D8BFD8", "#8B4513", "#000000", "#FF6347")
+colors <- c("papayawhip", "dodgerblue3", "black", "tan3", "tan4", "forestgreen", "darkgreen", "palegreen2", "springgreen3", "darkolivegreen")
 # Plot the raster
 plotRGB(rasterJ,3,2,1)
-plot(trainShapes, add=TRUE, col=colors[trainFactor])
+plot(allTrainShapes, add=TRUE, col=colors[trainFactor])
 ```
 
 Before fitting a model, the raster is divided up into multiple sectors. Some of those sectors can then be used for training and others for validation. The selected sectors are all the same size and were created by moving from the top left corner to the bottom, the the right and diagonally. Approximately 40% of the sectors shall be used for validation.
@@ -48,18 +49,11 @@ trainingExtents <- c(
 	extent(-97000, -95000, -46000, -44000),
 	extent(-97000, -95000, -48000, -46000)
 )
-# Shapes with classes used as training data
-trainingShapesAt <- lapply( rep("SpatialPointsDataFrame", length(trainingExtents)), new )
-# Full sectors used for plotting
-trainingSectors <- lapply( rep("RasterBrick", length(trainingExtents)), new )
-# Extracted values from sector at location of available training points
-trainingSectorValues <- c()
 for(i in 1:length(trainingExtents)) {
-	trainingShapesAt[[i]] <- crop(trainShapes, trainingExtents[[i]])
-	trainingSectors[[i]] <- crop(rasterJ, trainingExtents[[i]])
-	trainingSectorValues[[i]] <- extract(trainingSectors[[i]], trainingShapesAt[[i]])
-	plotRGB(trainingSectors[[i]],3,2,1)
-	plot(trainingShapesAt[[i]], add=TRUE, col=colors[trainFactor])
+	trainingShapesAtSector <- crop(allTrainShapes, trainingExtents[[i]])
+	trainingSector <- crop(rasterJ, trainingExtents[[i]])
+	plotRGB(trainingSector,3,2,1)
+	plot(trainingShapesAtSector, add=TRUE, col=colors[trainFactor])
 }
 
 validationExtents <- c(
@@ -74,33 +68,32 @@ validationExtents <- c(
 	extent(-97000, -95000, -42000, -40000),
 	extent(-97000, -95000, -50000, -48000)
 )
-validationShapesAt <- lapply( rep("SpatialPointsDataFrame", length(validationExtents)), new )
-validationSectors <- lapply( rep("RasterBrick", length(validationExtents)), new )
 for(i in 1:length(validationExtents)) {
-	validationShapesAt[[i]] <- crop(trainShapes, validationExtents[[i]])
-	validationSectors[[i]] <- crop(rasterJ, validationExtents[[i]])
-	plotRGB(validationSectors[[i]],3,2,1)
-	plot(validationShapesAt[[i]], add=TRUE, col=colors[trainFactor], pch=".")
+	validationShapesAtSector <- crop(allTrainShapes, validationExtents[[i]])
+	validationSector <- crop(rasterJ, validationExtents[[i]])
+	plotRGB(validationSector,3,2,1)
+	plot(validationShapesAtSector, add=TRUE, col=colors[trainFactor], pch=".")
 }
 ```
 
 The next step is to fit a model by training with one sector in the training set. This study uses the random forest classifier.
 ```{r}
 trainPos <- 1
-trainDataFrame <- data.frame(trainingSectorValues[[trainPos]], trainingShapesAt[[trainPos]])
-# Structure of the Data Frame:
-head(trainDataFrame, 5)
+trainingSector <- crop(rasterJ, trainingExtents[[trainPos]])
+trainingShapesAtSector <- crop(allTrainShapes, trainingSector)
+trainingSectorValues <- extract(trainingSector, trainingShapesAtSector)
+trainingDataFrame <- data.frame(trainingSectorValues)
 forest <- randomForest(
-	x=trainDataFrame[,1:4],
-	y=as.factor(trainingShapesAt[[trainPos]]$Label)
+	x=trainingDataFrame,
+	y=as.factor(trainingShapesAtSector$Label)
 )
 ```
 
 The above code trained the classifier with only one training sector. This classifier can be used to predict labels for new data. 
 In the following, the random forest model is used to predict the sector it has been trained with and plots the prediction results.
 ```{r}
-prediction <- predict(trainingSectors[[trainPos]], forest, type="response",	na.rm=TRUE)
-plotRGB(trainingSectors[[trainPos]], 3, 2, 1)
+prediction <- predict(trainingSector, forest, type="response",	na.rm=TRUE)
+plotRGB(trainingSector, 3, 2, 1)
 plot(prediction)
 ```
 
@@ -118,5 +111,40 @@ calculateError <- function(prediction, actual) {
 	}
 	return(trainDiffCount  / length(trainDiff))
 }
-calculateError(prediction, trainingShapesAt[[trainPos]]$Label)
+# Create a matrix to collect training and validation errors
+errorTrend <- matrix(ncol=length(trainingExtents), nrow=2, dimnames=list(c("Error in Training Set","Error in Validation Set")))
+errorTrend[1,trainPos] <- calculateError(prediction, trainingShapesAtSector$Label)
+errorTrend[1,trainPos]
+```
+Next, the error in the validation set will be measured. The validation set will be predicted, then the error of all known points will be computed.
+```{r}
+errorSum <- 0
+mergedExtent <- do.call(merge, validationExtents)
+validationSector <- crop(rasterJ, mergedExtent)
+validationShapesAtSector <- crop(allTrainShapes, validationSector)
+prediction <- predict(validationSector, forest, type="response", na.rm=TRUE)
+errorSum <- errorSum + calculateError(prediction, validationShapesAtSector$Label)
+errorTrend[2,trainPos] <- errorSum / length(validationExtents)
+errorTrend[2,trainPos]
+```
+
+The error value in the validation set is much higher, which was to be expected since the training set is naturally easier to predict for a model that has been trained with exactly that dataset.
+To prevent overfitting the model, both error rates must be observed. It is expected that both error rates will drop with more training, until the validation error will start to rise again. That point indicates, that the model should stop training in order to not overfit.
+The next code block trains the forest with the next piece of training data and then determines the prediction errors in training and validation sets.
+```{r}
+#for(trainPos in 2:length(trainingSectors)) {
+trainPos <- 2
+
+mergedExtent <- do.call(merge, trainingExtents[1:4])
+trainingSector <- crop(rasterJ, mergedExtent)
+trainingShapesAtSector <- crop(allTrainShapes, trainingSector)
+trainingSectorValues <- extract(trainingSector, trainingShapesAtSector)
+trainingDataFrame <- data.frame(trainingSectorValues)
+forest <- randomForest(
+	x=trainingDataFrame,
+	y=as.factor(trainingShapesAtSector$Label)
+)
+prediction <- predict(trainingSector, forest, type="response", na.rm=TRUE)
+errorTrend[1,trainPos] <- calculateError(prediction, trainingShapesAtSector$Label)
+errorTrend[1,trainPos]
 ```
